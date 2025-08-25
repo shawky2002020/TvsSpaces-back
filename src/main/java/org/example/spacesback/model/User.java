@@ -1,6 +1,8 @@
 package org.example.spacesback.model;
 
 import jakarta.persistence.*;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.Size;
 import lombok.*;
 
 import java.util.Date;
@@ -23,6 +25,7 @@ public class User {
     private String email;
 
     @Column(nullable=false)
+    @Size(min=8)
     private String password;
 
     @Column(nullable=false)

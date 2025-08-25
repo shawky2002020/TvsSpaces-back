@@ -2,6 +2,7 @@ package org.example.spacesback.service;
 
 import org.example.spacesback.model.User;
 import org.example.spacesback.repository.UserRepository;
+import org.example.spacesback.security.CustomUserDetails;
 import org.springframework.security.core.userdetails.*;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.stereotype.Service;
@@ -19,9 +20,11 @@ public class CustomUserDetailsService implements UserDetailsService {
     @Override
     public UserDetails loadUserByUsername(String email) throws UsernameNotFoundException {
         User u = userRepository.findByEmail(email)
-                .orElseThrow(() -> new UsernameNotFoundException("User not found"));
+                .orElseThrow(() -> new UsernameNotFoundException("User not found with email: " + email));
 
-        return new org.springframework.security.core.userdetails.User(
+        return new CustomUserDetails(
+                u.getId(),
+                u.getEmail(),
                 u.getUsername(),
                 u.getPassword(),
                 List.of(new SimpleGrantedAuthority(u.getRole()))
