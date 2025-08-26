@@ -8,6 +8,7 @@ import org.springframework.stereotype.Component;
 
 import java.security.Key;
 import java.util.Date;
+import java.util.Map;
 
 @Component
 public class JwtUtil {
@@ -24,28 +25,37 @@ public class JwtUtil {
                 .getSubject();
     }
 
-    public boolean validateToken(String token, UserDetails userDetails) {
-        String username = extractEmail(token);
-        return username.equals(userDetails.getUsername()) && !isExpired(token);
-    }
 
-    public boolean validateToken(String token) {
-        try {
-            return !isExpired(token);
-        } catch (Exception e) {
-            return false;
-        }
-    }
 
-    private boolean isExpired(String token) {
+    public boolean isTokenValid(String token) {
         Date expiration = Jwts.parserBuilder()
                 .setSigningKey(key)
                 .build()
                 .parseClaimsJws(token)
                 .getBody()
                 .getExpiration();
-        return expiration.before(new Date());
+        return expiration.after(new Date()); // true if still valid
     }
+
+    public boolean validateToken(String token, CustomUserDetails cud) {
+        String email = extractEmail(token);
+        System.out.println("🔑 Extracted from token: " + email);
+        System.out.println("👤 UserDetails email: " + cud.getEmail());
+
+        boolean usernamesMatch = email.equals(cud.getEmail());
+        System.out.println("✅ Usernames match? " + usernamesMatch);
+
+        boolean tokenValid = isTokenValid(token);
+        System.out.println("⏳ Token still valid? " + tokenValid);
+
+        boolean result = usernamesMatch && tokenValid;
+        System.out.println("🎯 Final validation result: " + result);
+
+        return result;
+    }
+
+
+
 
     public String generateToken(String username, Integer expirationMs) {
         return Jwts.builder()

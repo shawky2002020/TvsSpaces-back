@@ -24,6 +24,9 @@ public class SignupRequest {
     )
     private String password;
 
+    @NotBlank(message = "Type is required")
+    private String type;
+
 
 
 }

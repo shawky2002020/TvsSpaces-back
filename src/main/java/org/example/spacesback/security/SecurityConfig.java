@@ -11,6 +11,7 @@ import org.springframework.security.config.annotation.web.configurers.HeadersCon
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
 
 import java.util.List;
@@ -20,6 +21,22 @@ import static org.springframework.security.config.http.SessionCreationPolicy.STA
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
+
+    private final JwtAuthenticationFilter jwtFilter;
+
+    private final CustomAuthHandlers.CustomAuthenticationEntryPoint authEntryPoint;
+    private final CustomAuthHandlers.CustomAccessDeniedHandler accessDeniedHandler;
+
+    public SecurityConfig(
+            JwtAuthenticationFilter jwtFilter,
+            CustomAuthHandlers.CustomAuthenticationEntryPoint authEntryPoint,
+            CustomAuthHandlers.CustomAccessDeniedHandler accessDeniedHandler
+    ) {
+        this.jwtFilter = jwtFilter;
+        this.authEntryPoint = authEntryPoint;
+        this.accessDeniedHandler = accessDeniedHandler;
+    }
+
     @Bean
     public AuthenticationManager authenticationManager(AuthenticationConfiguration authConfig) throws Exception {
         return authConfig.getAuthenticationManager();
@@ -31,32 +48,26 @@ public class SecurityConfig {
     }
 
     @Bean
-    public SecurityFilterChain securityFilterChain(
-            HttpSecurity http,
-            CustomAuthHandlers.CustomAuthenticationEntryPoint authEntryPoint,
-            CustomAuthHandlers.CustomAccessDeniedHandler accessDeniedHandler
-    ) throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
                 // Disable CSRF
                 .csrf(AbstractHttpConfigurer::disable)
 
+                // CORS config
                 .cors(cors -> cors.configurationSource(request -> {
                     CorsConfiguration config = new CorsConfiguration();
-                    config.setAllowedOrigins(List.of("http://localhost:4200")); // 👈 allow Angular
-                    config.setAllowedMethods(List.of("GET","POST","PUT","DELETE","OPTIONS"));
+                    config.setAllowedOrigins(List.of("http://localhost:4200"));
+                    config.setAllowedMethods(List.of("GET","POST","PATCH","PUT","DELETE","OPTIONS"));
                     config.setAllowedHeaders(List.of("*"));
                     config.setAllowCredentials(true);
                     return config;
                 }))
-                // Configure headers (needed for H2 console)
-                .headers(headers -> headers
-                        .frameOptions(HeadersConfigurer.FrameOptionsConfig::disable)
-                )
 
-                // Stateless session management
-                .sessionManagement(session -> session
-                        .sessionCreationPolicy(STATELESS)
-                )
+                // Headers (H2 console)
+                .headers(headers -> headers.frameOptions(HeadersConfigurer.FrameOptionsConfig::disable))
+
+                // Stateless
+                .sessionManagement(session -> session.sessionCreationPolicy(STATELESS))
 
                 // Exception handling
                 .exceptionHandling(ex -> ex
@@ -64,18 +75,18 @@ public class SecurityConfig {
                         .accessDeniedHandler(accessDeniedHandler)
                 )
 
-                // Authorization rules
+                // Authorization
                 .authorizeHttpRequests(auth -> auth
-                        // Public endpoints
                         .requestMatchers(
                                 "/api/auth/**",
                                 "/h2-console/**",
-                                "/api/user/**"
+                                "/h2"
                         ).permitAll()
-
-                        // All other requests require authentication
                         .anyRequest().authenticated()
-                );
+                )
+
+                // 👇 Register JWT filter
+                .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
