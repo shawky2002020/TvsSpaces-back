@@ -20,4 +20,10 @@ public class LoginRequest {
     private String password;
 
 
+
+    public void setEmail(String email) {
+        this.email = email != null ? email.toLowerCase() : null;
+    }
+
+
 }

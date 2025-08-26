@@ -9,7 +9,8 @@ import java.util.Date;
 
 @Entity
 @Table(name = "users")
-@Data
+@Getter
+@Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
@@ -25,8 +26,10 @@ public class User {
     private String email;
 
     @Column(nullable=false)
-    @Size(min=8)
     private String password;
+
+    @Column(nullable=false)
+    private String type;
 
     @Column(nullable=false)
     private String role = "ROLE_USER"; // e.g. "ROLE_USER"
@@ -36,4 +39,9 @@ public class User {
 
     @Column (nullable = false)
     private Date creationDate;
+
+    @Column(nullable = false)
+    private Integer LoginCount = 0;
+
+
 }

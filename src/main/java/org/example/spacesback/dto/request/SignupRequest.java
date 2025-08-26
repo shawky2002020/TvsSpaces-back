@@ -24,6 +24,15 @@ public class SignupRequest {
     )
     private String password;
 
+    @NotBlank(message = "Type is required")
+    private String type;
 
+    public void setUsername(String username) {
+        this.username = username != null ? username.toLowerCase() : null;
+    }
+
+    public void setEmail(String email) {
+        this.email = email != null ? email.toLowerCase() : null;
+    }
 
 }

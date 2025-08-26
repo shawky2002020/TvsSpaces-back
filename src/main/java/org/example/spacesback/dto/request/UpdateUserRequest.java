@@ -1,9 +1,13 @@
 package org.example.spacesback.dto.request;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
+import org.example.spacesback.controller.AuthController;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Data
 public class UpdateUserRequest {
@@ -13,6 +17,7 @@ public class UpdateUserRequest {
     @Email(message = "Invalid email format")
     private String email;
 
+    @JsonProperty("password")
     @Size(min = 6, message = "Password must be at least 6 characters")
     private String newPassword;
 }

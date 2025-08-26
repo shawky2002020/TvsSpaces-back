@@ -50,7 +50,7 @@ public class AuthController {
 
     @PostMapping("/signup")
     public ResponseEntity<?> signup(@Valid @RequestBody SignupRequest req) {
-        if (userRepo.existsByEmail(req.getEmail())) return ResponseEntity.badRequest().body("email taken");
+        if (userRepo.existsByEmail(req.getEmail())) return ResponseEntity.badRequest().body(Map.of("message","Email already registered"));
         User u = new User();
         u.setUsername(req.getUsername());
         u.setEmail(req.getEmail());
@@ -58,10 +58,10 @@ public class AuthController {
         u.setRole("ROLE_USER");
         u.setCreationDate(new Date());
         u.setLastLogin(new Date());
+        u.setType(req.getType());
         userRepo.save(u);
         log.info("User logged in with email={}", u.getEmail());
         String newAccessToken = jwtUtil.generateToken(u.getEmail(), 15 * 60 * 1000);
-
         return ResponseEntity.ok(Map.of("token", newAccessToken, "user", u));
     }
 
@@ -71,8 +71,13 @@ public class AuthController {
             Authentication auth = authManager.authenticate(
                     new UsernamePasswordAuthenticationToken(req.getEmail(), req.getPassword())
             );
+            Optional<User> userOptional = userRepo.findByEmail(req.getEmail());
 
             CustomUserDetails cud = (CustomUserDetails) auth.getPrincipal();
+            if (userOptional.isEmpty()){
+                return ResponseEntity.badRequest().body(Map.of("message","User Not Found"));
+            }
+            User user = userOptional.get();
 
             // Access token (short-lived, e.g., 15 min)
             String accessToken = jwtUtil.generateToken(cud.getEmail(), 15 * 60 * 1000);
@@ -90,6 +95,7 @@ public class AuthController {
                     .build();
 
             response.addHeader("Set-Cookie", cookie.toString());
+            user.setLoginCount(user.getLoginCount()+1);
 
             return ResponseEntity.ok(Map.of(
                     "message", "Login successful",
@@ -121,7 +127,7 @@ public class AuthController {
                 .map(Cookie::getValue)
                 .orElse(null);
 
-        if (refreshToken == null || !jwtUtil.validateToken(refreshToken)) {
+        if (refreshToken == null || !jwtUtil.isTokenValid(refreshToken)) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid refresh token");
         }
 
@@ -130,7 +136,7 @@ public class AuthController {
         // Issue new access token
         String newAccessToken = jwtUtil.generateToken(email, 15 * 60 * 1000);
 
-        return ResponseEntity.ok(Map.of("accessToken", newAccessToken));
+        return ResponseEntity.ok(Map.of("token", newAccessToken));
     }
 
 }
