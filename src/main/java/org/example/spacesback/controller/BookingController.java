@@ -11,6 +11,7 @@ import org.example.spacesback.dto.mapper.SpaceMapper;
 import org.example.spacesback.dto.response.BookingResponse;
 import org.example.spacesback.dto.response.SpaceResponse;
 import org.example.spacesback.model.Booking;
+import org.example.spacesback.repository.SpaceRepository;
 import org.example.spacesback.security.CustomUserDetails;
 import org.example.spacesback.service.BookingService;
 import org.springframework.http.HttpStatus;
@@ -33,6 +34,7 @@ import java.util.Map;
 public class BookingController {
 
     private final BookingService bookingService;
+    private final SpaceRepository spaceRepository;
 
     @GetMapping("/spaces")
     public ResponseEntity<List<SpaceResponse>> getSpaces() {
@@ -44,6 +46,13 @@ public class BookingController {
     @GetMapping("/spaces/{id}")
     public ResponseEntity<SpaceResponse> getSpaceById(@PathVariable String id) {
         return ResponseEntity.ok(SpaceMapper.toSpaceResponse(bookingService.getSpaceById(id)));
+    }
+
+    @GetMapping("/spaces/slug/{slug}")
+    public ResponseEntity<SpaceResponse> getSpaceBySlug(@PathVariable String slug) {
+        return ResponseEntity.ok(spaceRepository.findBySlug(slug)
+                .map(SpaceMapper::toSpaceResponse)
+                .orElseThrow(() -> new IllegalArgumentException("Space not found with slug: " + slug)));
     }
 
     @GetMapping("/{spaceId}/availability/{date}")
