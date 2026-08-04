@@ -7,7 +7,7 @@ import lombok.Data;
 
 @Data
 public class UpdateUserRequest {
-    @Size(min = 3, max = 30, message = "Username must be between 3 and 30 characters")
+    @Size(min = 3, max = 100, message = "Username must be between 3 and 100 characters")
     private String username;
 
     @Email(message = "Invalid email format")
@@ -16,6 +16,6 @@ public class UpdateUserRequest {
     private String currentPassword;
 
     @JsonProperty("password")
-    @Size(min = 6, message = "Password must be at least 6 characters")
+    @Size(min = 8, message = "Password must be at least 8 characters")
     private String newPassword;
 }
