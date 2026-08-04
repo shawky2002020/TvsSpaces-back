@@ -6,8 +6,8 @@
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Phase 0** | Baseline & repository protection | COMPLETE | | Client: 612b345, Server: 75d344d | |
 | **Phase 1** | Configuration & environments | COMPLETE | | Client: 0a45857, Server: 89ba4c0 | |
-| **Phase 2** | DB schema & migrations | IN PROGRESS | | | |
-| **Phase 3** | Auth and account security | NOT STARTED | | | |
+| **Phase 2** | DB schema & migrations | COMPLETE | | Server: 8f0a096 | |
+| **Phase 3** | Auth and account security | IN PROGRESS | | | |
 | **Phase 4** | Spaces, price & availability | NOT STARTED | | | |
 | **Phase 5** | Transactional booking engine | NOT STARTED | | | |
 | **Phase 6** | Angular booking-flow integration | NOT STARTED | | | |

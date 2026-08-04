@@ -1,65 +1,77 @@
 package org.example.spacesback.security;
 
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.SignatureAlgorithm;
+import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
-import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.security.Key;
 import java.util.Date;
-import java.util.Map;
 
 @Component
 public class JwtUtil {
 
-    private final String SECRET = "yoursecretkeyyoursecretkeyyoursecretkey"; // >= 256 bits
-    private final Key key = Keys.hmacShaKeyFor(SECRET.getBytes());
+    private final Key key;
 
-    public String extractEmail(String token) {
-        return Jwts.parserBuilder()
-                .setSigningKey(key)
-                .build()
-                .parseClaimsJws(token)
-                .getBody()
-                .getSubject();
+    public JwtUtil(@Value("${app.jwtSecret}") String secret) {
+        this.key = Keys.hmacShaKeyFor(secret.getBytes());
     }
 
+    public String extractSubject(String token) {
+        try {
+            return Jwts.parserBuilder()
+                    .setSigningKey(key)
+                    .build()
+                    .parseClaimsJws(token)
+                    .getBody()
+                    .getSubject();
+        } catch (Exception e) {
+            return null;
+        }
+    }
 
+    public String extractTokenType(String token) {
+        try {
+            return Jwts.parserBuilder()
+                    .setSigningKey(key)
+                    .build()
+                    .parseClaimsJws(token)
+                    .getBody()
+                    .get("token_type", String.class);
+        } catch (Exception e) {
+            return null;
+        }
+    }
 
-    public boolean isTokenValid(String token) {
-        Date expiration = Jwts.parserBuilder()
-                .setSigningKey(key)
-                .build()
-                .parseClaimsJws(token)
-                .getBody()
-                .getExpiration();
-        return expiration.after(new Date()); // true if still valid
+    public boolean isTokenExpired(String token) {
+        try {
+            Date expiration = Jwts.parserBuilder()
+                    .setSigningKey(key)
+                    .build()
+                    .parseClaimsJws(token)
+                    .getBody()
+                    .getExpiration();
+            return expiration.before(new Date());
+        } catch (Exception e) {
+            return true;
+        }
     }
 
     public boolean validateToken(String token, CustomUserDetails cud) {
-        String email = extractEmail(token);
-        System.out.println("🔑 Extracted from token: " + email);
-        System.out.println("👤 UserDetails email: " + cud.getEmail());
+        String subject = extractSubject(token);
+        if (subject == null) return false;
 
-        boolean usernamesMatch = email.equals(cud.getEmail());
-        System.out.println("✅ Usernames match? " + usernamesMatch);
+        boolean idMatches = subject.equals(String.valueOf(cud.getId()));
+        boolean tokenValid = !isTokenExpired(token);
+        String tokenType = extractTokenType(token);
 
-        boolean tokenValid = isTokenValid(token);
-        System.out.println("⏳ Token still valid? " + tokenValid);
-
-        boolean result = usernamesMatch && tokenValid;
-        System.out.println("🎯 Final validation result: " + result);
-
-        return result;
+        return idMatches && tokenValid && "access".equals(tokenType);
     }
 
-
-
-
-    public String generateToken(String username, Integer expirationMs) {
+    public String generateToken(Long userId, Integer expirationMs, String tokenType) {
         return Jwts.builder()
-                .setSubject(username)
+                .setSubject(String.valueOf(userId))
+                .claim("token_type", tokenType)
                 .setIssuedAt(new Date())
                 .setExpiration(new Date(System.currentTimeMillis() + expirationMs))
                 .signWith(key, SignatureAlgorithm.HS256)

@@ -31,4 +31,18 @@ public class CustomUserDetailsService implements UserDetailsService {
                 List.of(new SimpleGrantedAuthority(u.getRole()))
         );
     }
+
+    public CustomUserDetails loadUserById(Long id) throws UsernameNotFoundException {
+        User u = userRepository.findById(id)
+                .orElseThrow(() -> new UsernameNotFoundException("User not found with id: " + id));
+
+        return new CustomUserDetails(
+                u.getId(),
+                u.getEmail(),
+                u.getUsername(),
+                u.getPassword(),
+                u.getType(),
+                List.of(new SimpleGrantedAuthority(u.getRole()))
+        );
+    }
 }

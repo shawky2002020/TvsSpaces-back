@@ -31,23 +31,22 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         if (header != null && header.startsWith("Bearer ")) {
             String token = header.substring(7);
-            System.out.println("token");
-            System.out.println(token);
-            String email = jwtUtil.extractEmail(token);
-            System.out.println("Email");
-            System.out.println(email);
+            String subject = jwtUtil.extractSubject(token);
 
-            if (email != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-                CustomUserDetails userDetails = userDetailsService.loadUserByUsername(email);
-                System.out.println("jwtUtil.validateToken(token, userDetails)");
-                System.out.println(jwtUtil.validateToken(token, userDetails));
-                if (jwtUtil.validateToken(token, userDetails)) {
-                    UsernamePasswordAuthenticationToken auth =
-                            new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
+            if (subject != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+                try {
+                    Long userId = Long.valueOf(subject);
+                    CustomUserDetails userDetails = userDetailsService.loadUserById(userId);
+                    if (jwtUtil.validateToken(token, userDetails)) {
+                        UsernamePasswordAuthenticationToken auth =
+                                new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
 
-                    auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(req)); // ✅ attach request details
+                        auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(req));
 
-                    SecurityContextHolder.getContext().setAuthentication(auth);
+                        SecurityContextHolder.getContext().setAuthentication(auth);
+                    }
+                } catch (Exception e) {
+                    // Ignore exceptions for invalid/expired tokens or user not found
                 }
             }
         }
