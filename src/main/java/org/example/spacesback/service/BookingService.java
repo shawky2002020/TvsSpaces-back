@@ -7,19 +7,36 @@ import org.example.spacesback.model.User;
 import org.example.spacesback.repository.BookingRepository;
 import org.example.spacesback.repository.SpaceRepository;
 import org.example.spacesback.repository.UserRepository;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.text.SimpleDateFormat;
-import java.util.*;
+import java.time.Duration;
+import java.time.LocalDate;
+import java.time.LocalTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
 public class BookingService {
 
+    private static final int OPENING_HOUR = 9;
+    private static final int CLOSING_HOUR = 18;
+
     private final SpaceRepository spaceRepository;
     private final BookingRepository bookingRepository;
     private final UserRepository userRepository;
+
+    @Value("${app.businessTimeZone:Africa/Cairo}")
+    private String businessTimeZone;
 
     public List<Space> getAllSpaces() {
         return spaceRepository.findAll();
@@ -30,59 +47,73 @@ public class BookingService {
                 .orElseThrow(() -> new IllegalArgumentException("Space not found with id: " + id));
     }
 
-    public double calculatePrice(String spaceId, String plan, String dateStr, String endDateStr, int startTime, int endTime, int quantity) {
+    public double calculatePrice(
+            String spaceId,
+            String plan,
+            String dateStr,
+            String endDateStr,
+            int startTime,
+            int endTime,
+            int quantity
+    ) {
         Space space = getSpaceById(spaceId);
-        Date start = parseDateTime(dateStr, startTime);
-        Date end = parseDateTime(endDateStr != null ? endDateStr : dateStr, endTime);
-        return calculatePriceInternal(space, plan, start, end, quantity);
+        BookingInterval interval = createInterval(plan, dateStr, endDateStr, startTime, endTime);
+        validateBookingRequest(space, interval, quantity, false);
+        return calculatePriceInternal(space, interval.plan(), interval.start(), interval.end(), quantity);
     }
 
     private double calculatePriceInternal(Space space, String plan, Date start, Date end, int quantity) {
-        if (quantity <= 0) return 0.0;
-        if ("Hourly".equalsIgnoreCase(plan)) {
-            long diffMs = end.getTime() - start.getTime();
-            double hours = diffMs / (1000.0 * 60 * 60);
-            if (hours <= 0) hours = 1;
+        if ("Hourly".equals(plan)) {
+            double hours = Duration.between(start.toInstant(), end.toInstant()).toMinutes() / 60.0;
             return space.getHourlyPrice() * hours * quantity;
-        } else if ("Half-day".equalsIgnoreCase(plan)) {
+        }
+        if ("Half-day".equals(plan)) {
             return space.getHalfDayPrice() * quantity;
-        } else if ("Daily".equalsIgnoreCase(plan)) {
-            long diffMs = end.getTime() - start.getTime();
-            long days = diffMs / (1000 * 60 * 60 * 24);
-            if (days <= 0) days = 1;
-            return space.getDayPrice() * days * quantity;
-        } else if ("Monthly".equalsIgnoreCase(plan)) {
+        }
+        if ("Daily".equals(plan)) {
+            LocalDate startDate = toBusinessDate(start);
+            LocalDate endDate = toBusinessDate(end);
+            long inclusiveDays = ChronoUnit.DAYS.between(startDate, endDate) + 1;
+            return space.getDayPrice() * inclusiveDays * quantity;
+        }
+        if ("Monthly".equals(plan)) {
             return space.getDayPrice() * 20 * quantity;
         }
-        return 0.0;
+        throw new IllegalArgumentException("Unsupported booking plan");
     }
 
-    public boolean checkAvailability(String spaceId, String dateStr, int startTime, int endTime, int requestedUnits) {
+    public boolean checkAvailability(
+            String spaceId,
+            String plan,
+            String dateStr,
+            String endDateStr,
+            int startTime,
+            int endTime,
+            int requestedUnits
+    ) {
         Space space = getSpaceById(spaceId);
-        Date start = parseDateTime(dateStr, startTime);
-        Date end = parseDateTime(dateStr, endTime);
-        return isAvailable(space, start, end, requestedUnits);
+        BookingInterval interval = createInterval(plan, dateStr, endDateStr, startTime, endTime);
+        validateBookingRequest(space, interval, requestedUnits, false);
+        return isAvailable(space, interval.start(), interval.end(), requestedUnits);
     }
 
     public boolean isAvailable(Space space, Date start, Date end, int requestedUnits) {
-        if (requestedUnits <= 0 || requestedUnits > space.getCapacity()) {
+        if (requestedUnits <= 0 || requestedUnits > space.getCapacity() || !end.after(start)) {
             return false;
         }
+
         List<Booking> overlaps = bookingRepository.findOverlappingActiveBookings(space.getId(), start, end);
+        long hourMs = 60L * 60L * 1000L;
 
-        // Check hour-by-hour concurrency
-        long startMs = start.getTime();
-        long endMs = end.getTime();
-        long hourMs = 1000L * 60 * 60;
+        for (long time = start.getTime(); time < end.getTime(); time += hourMs) {
+            Date slotStart = new Date(time);
+            Date slotEnd = new Date(Math.min(time + hourMs, end.getTime()));
+            int currentReserved = overlaps.stream()
+                    .filter(booking -> booking.getStartAt().before(slotEnd)
+                            && booking.getEndAt().after(slotStart))
+                    .mapToInt(Booking::getReservedUnits)
+                    .sum();
 
-        for (long time = startMs; time < endMs; time += hourMs) {
-            Date timePoint = new Date(time);
-            int currentReserved = 0;
-            for (Booking b : overlaps) {
-                if (b.getStartAt().before(new Date(time + 1)) && b.getEndAt().after(timePoint)) {
-                    currentReserved += b.getReservedUnits();
-                }
-            }
             if (currentReserved + requestedUnits > space.getCapacity()) {
                 return false;
             }
@@ -92,100 +123,89 @@ public class BookingService {
 
     public List<String> getUnavailableDates(String spaceId, int year, int month) {
         Space space = getSpaceById(spaceId);
-        List<String> unavailables = new ArrayList<>();
+        LocalDate firstDay;
+        try {
+            firstDay = LocalDate.of(year, month, 1);
+        } catch (RuntimeException exception) {
+            throw new IllegalArgumentException("Invalid year or month");
+        }
 
-        Calendar cal = Calendar.getInstance();
-        cal.set(Calendar.YEAR, year);
-        cal.set(Calendar.MONTH, month - 1);
-        cal.set(Calendar.DATE, 1);
-
-        int daysInMonth = cal.getActualMaximum(Calendar.DAY_OF_MONTH);
-        for (int d = 1; d <= daysInMonth; d++) {
-            cal.set(Calendar.DATE, d);
-
-            cal.set(Calendar.HOUR_OF_DAY, 9);
-            cal.set(Calendar.MINUTE, 0);
-            cal.set(Calendar.SECOND, 0);
-            Date dayStart = cal.getTime();
-
-            cal.set(Calendar.HOUR_OF_DAY, 17);
-            Date dayEnd = cal.getTime();
-
+        List<String> unavailableDates = new ArrayList<>();
+        for (int day = 1; day <= firstDay.lengthOfMonth(); day++) {
+            LocalDate date = firstDay.withDayOfMonth(day);
+            Date dayStart = toDate(date, OPENING_HOUR);
+            Date dayEnd = toDate(date, CLOSING_HOUR);
             if (!isAvailable(space, dayStart, dayEnd, 1)) {
-                SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
-                unavailables.add(sdf.format(dayStart));
+                unavailableDates.add(date.toString());
             }
         }
-        return unavailables;
+        return unavailableDates;
     }
 
     public Map<String, Object> getAvailabilityGrid(String spaceId, String dateStr) {
         Space space = getSpaceById(spaceId);
-        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
-        Date date;
-        try {
-            date = sdf.parse(dateStr);
-        } catch (Exception e) {
-            throw new IllegalArgumentException("Invalid date format: " + dateStr);
-        }
-
-        Calendar cal = Calendar.getInstance();
-        cal.setTime(date);
-
+        LocalDate date = parseDate(dateStr);
         List<Map<String, Object>> slots = new ArrayList<>();
-        for (int h = 9; h <= 17; h++) {
-            cal.set(Calendar.HOUR_OF_DAY, h);
-            cal.set(Calendar.MINUTE, 0);
-            cal.set(Calendar.SECOND, 0);
-            Date hourStart = cal.getTime();
 
-            cal.set(Calendar.HOUR_OF_DAY, h + 1);
-            Date hourEnd = cal.getTime();
-
-            boolean avail = isAvailable(space, hourStart, hourEnd, 1);
-            slots.add(Map.of("hour", h, "available", avail));
+        for (int hour = OPENING_HOUR; hour < CLOSING_HOUR; hour++) {
+            Date hourStart = toDate(date, hour);
+            Date hourEnd = toDate(date, hour + 1);
+            slots.add(Map.of(
+                    "hour", hour,
+                    "available", isAvailable(space, hourStart, hourEnd, 1)
+            ));
         }
 
         return Map.of("date", dateStr, "slots", slots);
     }
 
     @Transactional
-    public Booking createBooking(Long userId, String spaceId, String plan, String dateStr, String endDateStr, int startTime, int endTime, int quantity, String paymentMethod) {
+    public Booking createBooking(
+            Long userId,
+            String spaceId,
+            String plan,
+            String dateStr,
+            String endDateStr,
+            int startTime,
+            int endTime,
+            int quantity,
+            String paymentMethod
+    ) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("User not found with id: " + userId));
         Space space = spaceRepository.findByIdForUpdate(spaceId)
                 .orElseThrow(() -> new IllegalArgumentException("Space not found with id: " + spaceId));
 
-        Date startAt = parseDateTime(dateStr, startTime);
-        Date endAt = parseDateTime(endDateStr != null ? endDateStr : dateStr, endTime);
+        BookingInterval interval = createInterval(plan, dateStr, endDateStr, startTime, endTime);
+        validateBookingRequest(space, interval, quantity, true);
 
-        if (startAt.before(new Date())) {
-            throw new IllegalArgumentException("Booking cannot be in the past");
-        }
-        if (endAt.before(startAt) || endAt.equals(startAt)) {
-            throw new IllegalArgumentException("Booking end time must be after start time");
-        }
-
-        // Transactional Overlap and Capacity validation
-        if (!isAvailable(space, startAt, endAt, quantity)) {
+        if (!isAvailable(space, interval.start(), interval.end(), quantity)) {
             throw new IllegalStateException("Selected space slot does not have sufficient capacity");
         }
 
-        double totalPrice = calculatePriceInternal(space, plan, startAt, endAt, quantity);
-        double unitPrice = calculatePriceInternal(space, plan, startAt, endAt, 1);
+        double totalPrice = calculatePriceInternal(
+                space,
+                interval.plan(),
+                interval.start(),
+                interval.end(),
+                quantity
+        );
+        if (totalPrice <= 0) {
+            throw new IllegalArgumentException("Booking price must be greater than zero");
+        }
 
         Booking booking = new Booking();
-        booking.setReference("BK-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase());
+        booking.setReference("BK-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase(Locale.ROOT));
         booking.setUser(user);
         booking.setSpace(space);
-        booking.setPlan(plan);
-        booking.setStartAt(startAt);
-        booking.setEndAt(endAt);
+        booking.setPlan(interval.plan());
+        booking.setStartAt(interval.start());
+        booking.setEndAt(interval.end());
         booking.setReservedUnits(quantity);
-        booking.setUnitPrice(unitPrice);
+        booking.setUnitPrice(totalPrice / quantity);
         booking.setTotalPrice(totalPrice);
         booking.setStatus("CONFIRMED");
-        booking.setPaymentMethod(paymentMethod != null ? paymentMethod : "PAY_AT_VENUE");
+        booking.setPaymentMethod(normalizePaymentMethod(paymentMethod));
         booking.setPaymentStatus("PENDING");
         booking.setCreatedAt(new Date());
         booking.setUpdatedAt(new Date());
@@ -205,25 +225,118 @@ public class BookingService {
         if (!booking.getUser().getId().equals(userId)) {
             throw new SecurityException("Unauthorized to cancel this booking");
         }
+        if ("CANCELLED".equals(booking.getStatus())) {
+            return booking;
+        }
+        if (booking.getStartAt().before(new Date())) {
+            throw new IllegalStateException("Started or completed bookings cannot be cancelled");
+        }
 
         booking.setStatus("CANCELLED");
         booking.setUpdatedAt(new Date());
         return bookingRepository.save(booking);
     }
 
-    private Date parseDateTime(String dateStr, int hour) {
-        try {
-            SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
-            Date baseDate = sdf.parse(dateStr);
-            Calendar cal = Calendar.getInstance();
-            cal.setTime(baseDate);
-            cal.set(Calendar.HOUR_OF_DAY, hour);
-            cal.set(Calendar.MINUTE, 0);
-            cal.set(Calendar.SECOND, 0);
-            cal.set(Calendar.MILLISECOND, 0);
-            return cal.getTime();
-        } catch (Exception e) {
-            throw new IllegalArgumentException("Invalid date format or hour: " + dateStr + ", hour: " + hour);
+    private void validateBookingRequest(
+            Space space,
+            BookingInterval interval,
+            int quantity,
+            boolean rejectPast
+    ) {
+        if (quantity <= 0 || quantity > space.getCapacity()) {
+            throw new IllegalArgumentException("Requested units must be between 1 and the space capacity");
+        }
+        if (!interval.end().after(interval.start())) {
+            throw new IllegalArgumentException("Booking end time must be after start time");
+        }
+        if (rejectPast && interval.start().before(new Date())) {
+            throw new IllegalArgumentException("Booking cannot be in the past");
+        }
+
+        ZonedDateTime start = interval.start().toInstant().atZone(zoneId());
+        ZonedDateTime end = interval.end().toInstant().atZone(zoneId());
+        if (start.toLocalTime().isBefore(LocalTime.of(OPENING_HOUR, 0))
+                || start.toLocalTime().isAfter(LocalTime.of(CLOSING_HOUR - 1, 0))
+                || end.toLocalTime().isAfter(LocalTime.of(CLOSING_HOUR, 0))) {
+            throw new IllegalArgumentException("Bookings must stay within operating hours 09:00-18:00");
+        }
+        if ("Half-day".equals(interval.plan())
+                && Duration.between(interval.start().toInstant(), interval.end().toInstant()).toHours() != 4) {
+            throw new IllegalArgumentException("Half-day bookings must reserve exactly four hours");
         }
     }
+
+    private BookingInterval createInterval(
+            String plan,
+            String dateStr,
+            String endDateStr,
+            int startTime,
+            int endTime
+    ) {
+        String normalizedPlan = normalizePlan(plan);
+        LocalDate startDate = parseDate(dateStr);
+        LocalDate endDate = endDateStr == null || endDateStr.isBlank()
+                ? startDate
+                : parseDate(endDateStr);
+
+        int normalizedStartHour = startTime;
+        int normalizedEndHour = endTime;
+        if ("Half-day".equals(normalizedPlan)) {
+            normalizedStartHour = OPENING_HOUR;
+            normalizedEndHour = OPENING_HOUR + 4;
+        } else if (!"Hourly".equals(normalizedPlan)) {
+            normalizedStartHour = OPENING_HOUR;
+            normalizedEndHour = CLOSING_HOUR;
+        }
+
+        return new BookingInterval(
+                normalizedPlan,
+                toDate(startDate, normalizedStartHour),
+                toDate(endDate, normalizedEndHour)
+        );
+    }
+
+    private String normalizePlan(String plan) {
+        if (plan == null) throw new IllegalArgumentException("Booking plan is required");
+        return switch (plan.trim().toLowerCase(Locale.ROOT)) {
+            case "hourly" -> "Hourly";
+            case "half-day", "half day" -> "Half-day";
+            case "daily" -> "Daily";
+            case "monthly" -> "Monthly";
+            default -> throw new IllegalArgumentException("Unsupported booking plan: " + plan);
+        };
+    }
+
+    private String normalizePaymentMethod(String paymentMethod) {
+        if (paymentMethod == null || paymentMethod.isBlank()) return "PAY_AT_VENUE";
+        if (!"PAY_AT_VENUE".equalsIgnoreCase(paymentMethod.trim())) {
+            throw new IllegalArgumentException("Only PAY_AT_VENUE is currently supported");
+        }
+        return "PAY_AT_VENUE";
+    }
+
+    private LocalDate parseDate(String dateStr) {
+        try {
+            return LocalDate.parse(dateStr);
+        } catch (RuntimeException exception) {
+            throw new IllegalArgumentException("Invalid date format: " + dateStr);
+        }
+    }
+
+    private Date toDate(LocalDate date, int hour) {
+        if (hour < 0 || hour > 23) {
+            throw new IllegalArgumentException("Invalid booking hour: " + hour);
+        }
+        return Date.from(ZonedDateTime.of(date, LocalTime.of(hour, 0), zoneId()).toInstant());
+    }
+
+    private LocalDate toBusinessDate(Date date) {
+        return date.toInstant().atZone(zoneId()).toLocalDate();
+    }
+
+    private ZoneId zoneId() {
+        return ZoneId.of(businessTimeZone);
+    }
+
+    private record BookingInterval(String plan, Date start, Date end) {}
 }
