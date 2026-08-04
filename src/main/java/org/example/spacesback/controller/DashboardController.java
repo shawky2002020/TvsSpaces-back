@@ -25,35 +25,31 @@ public class DashboardController {
     public ResponseEntity<?> getStats(Authentication auth) {
         CustomUserDetails userDetails = (CustomUserDetails) auth.getPrincipal();
         List<Booking> bookings = bookingService.getBookingsByUserId(userDetails.getId());
-
-        long total = bookings.size();
-        long upcoming = 0;
-        long completed = 0;
-        long cancelled = 0;
         Date now = new Date();
 
-        for (Booking b : bookings) {
-            if ("CANCELLED".equals(b.getStatus())) {
-                cancelled++;
-            } else if ("CONFIRMED".equals(b.getStatus())) {
-                if (b.getStartAt().after(now)) {
-                    upcoming++;
-                } else {
-                    completed++;
-                }
-            }
-        }
-
-        // Visits can be mapped to completed + upcoming confirmed bookings
-        long visits = completed + upcoming;
+        long upcoming = bookings.stream()
+                .filter(booking -> "CONFIRMED".equals(booking.getStatus()))
+                .filter(booking -> booking.getStartAt().after(now))
+                .count();
+        long active = bookings.stream()
+                .filter(booking -> "CONFIRMED".equals(booking.getStatus()))
+                .filter(booking -> !booking.getStartAt().after(now) && booking.getEndAt().after(now))
+                .count();
+        long completed = bookings.stream()
+                .filter(booking -> "CONFIRMED".equals(booking.getStatus()))
+                .filter(booking -> !booking.getEndAt().after(now))
+                .count();
+        long cancelled = bookings.stream()
+                .filter(booking -> "CANCELLED".equals(booking.getStatus()))
+                .count();
 
         return ResponseEntity.ok(Map.of(
-                "totalReservations", total,
+                "totalReservations", bookings.size(),
                 "upcomingReservations", upcoming,
+                "activeReservations", active,
                 "completedReservations", completed,
                 "cancelledReservations", cancelled,
-                "totalVisits", visits,
-                "totalPoints", 0
+                "totalVisits", completed
         ));
     }
 }
