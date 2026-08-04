@@ -3,6 +3,7 @@ package org.example.spacesback.security;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -81,6 +82,7 @@ public class SecurityConfig {
                                 "/h2-console/**",
                                 "/h2"
                         ).permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/bookings/spaces/**").permitAll()
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
