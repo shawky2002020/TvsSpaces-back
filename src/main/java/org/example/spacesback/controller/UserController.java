@@ -2,19 +2,24 @@ package org.example.spacesback.controller;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.example.spacesback.dto.mapper.UserMapper;
 import org.example.spacesback.dto.request.UpdateUserRequest;
 import org.example.spacesback.model.User;
-import org.example.spacesback.repository.UserRepository;
 import org.example.spacesback.repository.RefreshSessionRepository;
+import org.example.spacesback.repository.UserRepository;
 import org.example.spacesback.security.CustomUserDetails;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.web.bind.annotation.*;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
+import java.util.Locale;
 import java.util.Map;
-import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/user")
@@ -29,43 +34,44 @@ public class UserController {
     @Transactional
     public ResponseEntity<?> editUser(@Valid @RequestBody UpdateUserRequest req, Authentication auth) {
         CustomUserDetails userDetails = (CustomUserDetails) auth.getPrincipal();
-        Long idFromToken = userDetails.getId();
-        Optional<User> optionalUser = userRepo.findById(idFromToken);
+        User user = userRepo.findById(userDetails.getId()).orElse(null);
 
-        if (optionalUser.isEmpty()) {
-            return ResponseEntity.badRequest().body(Map.of("message", "User not found"));
+        if (user == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", "User not found"));
         }
 
-        User user = optionalUser.get();
-
-        // Update email
-        if (req.getEmail() != null && !req.getEmail().equalsIgnoreCase(user.getEmail())) {
-            if (userRepo.existsByEmail(req.getEmail())) {
-                return ResponseEntity.badRequest().body(Map.of("message", "Email already taken"));
+        if (req.getEmail() != null && !req.getEmail().isBlank()) {
+            String normalizedEmail = req.getEmail().trim().toLowerCase(Locale.ROOT);
+            if (!normalizedEmail.equalsIgnoreCase(user.getEmail())) {
+                if (userRepo.existsByEmail(normalizedEmail)) {
+                    return ResponseEntity.badRequest().body(Map.of("message", "Email already taken"));
+                }
+                String oldEmail = user.getEmail();
+                user.setEmail(normalizedEmail);
+                refreshSessionRepo.findByEmail(oldEmail).ifPresent(session -> {
+                    session.setEmail(normalizedEmail);
+                    refreshSessionRepo.save(session);
+                });
             }
-            String oldEmail = user.getEmail();
-            user.setEmail(req.getEmail());
-            // Sync refresh session
-            refreshSessionRepo.findByEmail(oldEmail).ifPresent(session -> {
-                session.setEmail(req.getEmail());
-                refreshSessionRepo.save(session);
-            });
         }
 
-        if (req.getUsername() != null && !req.getUsername().equals(user.getUsername())) {
-            user.setUsername(req.getUsername());
+        if (req.getUsername() != null && !req.getUsername().isBlank()) {
+            user.setUsername(req.getUsername().trim());
         }
 
-        // Update password with old password verification
         if (req.getNewPassword() != null && !req.getNewPassword().isBlank()) {
-            if (req.getCurrentPassword() == null || !passwordEncoder.matches(req.getCurrentPassword(), user.getPassword())) {
-                return ResponseEntity.status(401).body(Map.of("message", "Incorrect or missing current password"));
+            if (req.getCurrentPassword() == null
+                    || !passwordEncoder.matches(req.getCurrentPassword(), user.getPassword())) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                        .body(Map.of("message", "Incorrect or missing current password"));
             }
             user.setPassword(passwordEncoder.encode(req.getNewPassword()));
         }
 
-        userRepo.save(user);
-
-        return ResponseEntity.ok().body(Map.of("message", "User updated successfully"));
+        User savedUser = userRepo.save(user);
+        return ResponseEntity.ok(Map.of(
+                "message", "User updated successfully",
+                "user", UserMapper.toUserResponse(savedUser)
+        ));
     }
 }
