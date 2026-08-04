@@ -65,9 +65,16 @@ public class BookingController {
 
     @PostMapping("/availability")
     public ResponseEntity<?> checkAvailability(@Valid @RequestBody AvailabilityRequest req) {
+        String effectivePlan = req.getPlan();
+        if (effectivePlan == null || effectivePlan.isBlank()) {
+            effectivePlan = req.getStartTime() == 9 && req.getEndTime() >= 17
+                    ? "Daily"
+                    : "Hourly";
+        }
+
         boolean available = bookingService.checkAvailability(
                 req.getSpaceId(),
-                req.getPlan(),
+                effectivePlan,
                 req.getDate(),
                 req.getEndDate(),
                 req.getStartTime(),
@@ -133,7 +140,6 @@ public class BookingController {
     public static class AvailabilityRequest {
         @NotBlank
         private String spaceId;
-        @NotBlank
         private String plan;
         @NotBlank
         private String date;
