@@ -2,6 +2,7 @@ package org.example.spacesback.dto.request;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
 
@@ -12,6 +13,12 @@ public class UpdateUserRequest {
 
     @Email(message = "Invalid email format")
     private String email;
+
+    @Pattern(
+            regexp = "^(student|freelancer|entrepreneur|remote-worker|startup|other)$",
+            message = "Invalid user type"
+    )
+    private String type;
 
     private String currentPassword;
 
