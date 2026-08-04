@@ -59,6 +59,10 @@ public class UserController {
             user.setUsername(req.getUsername().trim());
         }
 
+        if (req.getType() != null && !req.getType().isBlank()) {
+            user.setType(req.getType());
+        }
+
         if (req.getNewPassword() != null && !req.getNewPassword().isBlank()) {
             if (req.getCurrentPassword() == null
                     || !passwordEncoder.matches(req.getCurrentPassword(), user.getPassword())) {
