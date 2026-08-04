@@ -7,9 +7,10 @@ import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.example.spacesback.dto.mapper.BookingMapper;
+import org.example.spacesback.dto.mapper.SpaceMapper;
 import org.example.spacesback.dto.response.BookingResponse;
+import org.example.spacesback.dto.response.SpaceResponse;
 import org.example.spacesback.model.Booking;
-import org.example.spacesback.model.Space;
 import org.example.spacesback.security.CustomUserDetails;
 import org.example.spacesback.service.BookingService;
 import org.springframework.http.HttpStatus;
@@ -34,13 +35,15 @@ public class BookingController {
     private final BookingService bookingService;
 
     @GetMapping("/spaces")
-    public ResponseEntity<List<Space>> getSpaces() {
-        return ResponseEntity.ok(bookingService.getAllSpaces());
+    public ResponseEntity<List<SpaceResponse>> getSpaces() {
+        return ResponseEntity.ok(bookingService.getAllSpaces().stream()
+                .map(SpaceMapper::toSpaceResponse)
+                .toList());
     }
 
     @GetMapping("/spaces/{id}")
-    public ResponseEntity<Space> getSpaceById(@PathVariable String id) {
-        return ResponseEntity.ok(bookingService.getSpaceById(id));
+    public ResponseEntity<SpaceResponse> getSpaceById(@PathVariable String id) {
+        return ResponseEntity.ok(SpaceMapper.toSpaceResponse(bookingService.getSpaceById(id)));
     }
 
     @GetMapping("/{spaceId}/availability/{date}")
