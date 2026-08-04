@@ -282,8 +282,13 @@ public class BookingService {
         int normalizedStartHour = startTime;
         int normalizedEndHour = endTime;
         if ("Half-day".equals(normalizedPlan)) {
-            normalizedStartHour = OPENING_HOUR;
-            normalizedEndHour = OPENING_HOUR + 4;
+            if (startTime == 14) {
+                normalizedStartHour = 14;
+                normalizedEndHour = 18;
+            } else {
+                normalizedStartHour = OPENING_HOUR;
+                normalizedEndHour = OPENING_HOUR + 4;
+            }
         } else if (!"Hourly".equals(normalizedPlan)) {
             normalizedStartHour = OPENING_HOUR;
             normalizedEndHour = CLOSING_HOUR;
