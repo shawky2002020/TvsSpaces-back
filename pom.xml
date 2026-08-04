@@ -105,11 +105,7 @@
             <artifactId>spring-security-test</artifactId>
             <scope>test</scope>
         </dependency>
-        <dependency>
-            <groupId>org.example</groupId>
-            <artifactId>spaces-back</artifactId>
-            <version>0.0.1-SNAPSHOT</version>
-        </dependency>
+
 
 
     </dependencies>
