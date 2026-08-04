@@ -153,7 +153,8 @@ public class BookingService {
     public Booking createBooking(Long userId, String spaceId, String plan, String dateStr, String endDateStr, int startTime, int endTime, int quantity, String paymentMethod) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("User not found with id: " + userId));
-        Space space = getSpaceById(spaceId);
+        Space space = spaceRepository.findByIdForUpdate(spaceId)
+                .orElseThrow(() -> new IllegalArgumentException("Space not found with id: " + spaceId));
 
         Date startAt = parseDateTime(dateStr, startTime);
         Date endAt = parseDateTime(endDateStr != null ? endDateStr : dateStr, endTime);
