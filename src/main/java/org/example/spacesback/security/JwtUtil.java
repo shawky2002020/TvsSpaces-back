@@ -1,12 +1,15 @@
 package org.example.spacesback.security;
 
-import io.jsonwebtoken.*;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.nio.charset.StandardCharsets;
 import java.security.Key;
 import java.util.Date;
+import java.util.UUID;
 
 @Component
 public class JwtUtil {
@@ -14,7 +17,7 @@ public class JwtUtil {
     private final Key key;
 
     public JwtUtil(@Value("${app.jwtSecret}") String secret) {
-        this.key = Keys.hmacShaKeyFor(secret.getBytes());
+        this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
     }
 
     public String extractSubject(String token) {
@@ -25,7 +28,7 @@ public class JwtUtil {
                     .parseClaimsJws(token)
                     .getBody()
                     .getSubject();
-        } catch (Exception e) {
+        } catch (Exception exception) {
             return null;
         }
     }
@@ -38,7 +41,7 @@ public class JwtUtil {
                     .parseClaimsJws(token)
                     .getBody()
                     .get("token_type", String.class);
-        } catch (Exception e) {
+        } catch (Exception exception) {
             return null;
         }
     }
@@ -52,28 +55,28 @@ public class JwtUtil {
                     .getBody()
                     .getExpiration();
             return expiration.before(new Date());
-        } catch (Exception e) {
+        } catch (Exception exception) {
             return true;
         }
     }
 
-    public boolean validateToken(String token, CustomUserDetails cud) {
+    public boolean validateToken(String token, CustomUserDetails userDetails) {
         String subject = extractSubject(token);
         if (subject == null) return false;
 
-        boolean idMatches = subject.equals(String.valueOf(cud.getId()));
-        boolean tokenValid = !isTokenExpired(token);
-        String tokenType = extractTokenType(token);
-
-        return idMatches && tokenValid && "access".equals(tokenType);
+        return subject.equals(String.valueOf(userDetails.getId()))
+                && !isTokenExpired(token)
+                && "access".equals(extractTokenType(token));
     }
 
     public String generateToken(Long userId, Integer expirationMs, String tokenType) {
+        Date issuedAt = new Date();
         return Jwts.builder()
+                .setId(UUID.randomUUID().toString())
                 .setSubject(String.valueOf(userId))
                 .claim("token_type", tokenType)
-                .setIssuedAt(new Date())
-                .setExpiration(new Date(System.currentTimeMillis() + expirationMs))
+                .setIssuedAt(issuedAt)
+                .setExpiration(new Date(issuedAt.getTime() + expirationMs))
                 .signWith(key, SignatureAlgorithm.HS256)
                 .compact();
     }
