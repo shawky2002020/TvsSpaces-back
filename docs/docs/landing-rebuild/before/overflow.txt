@@ -1,0 +1,5 @@
+0390x844: scrollWidth=390 clientWidth=390 overflow=false
+0768x1024: scrollWidth=768 clientWidth=768 overflow=false
+1366x768: scrollWidth=1366 clientWidth=1366 overflow=false
+1440x900: scrollWidth=1440 clientWidth=1440 overflow=false
+1920x1080: scrollWidth=1920 clientWidth=1920 overflow=false
