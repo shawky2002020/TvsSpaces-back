@@ -192,14 +192,14 @@ sequenceDiagram
     Controller->>Jwt: generateToken(userId, 15m, "access")
     Controller->>Jwt: generateToken(userId, 7d, "refresh")
     Controller->>DB: Hash refresh token (SHA-256) & save to refresh_sessions
-    Controller-->>Client: 200 OK Body: {token: AccessToken, user: UserDTO}<br/>Set-Cookie: refresh_token=HttpOnly; SameSite=Lax
+    Controller-->>Client: 200 OK with access token and refresh cookie (HttpOnly, SameSite=Lax)
 ```
 
 ---
 
 ## Booking Lifecycle
 
-Bookings transitions are enforced by `BookingService`:
+Booking transitions are enforced by `BookingService`:
 
 ```mermaid
 stateDiagram-v2
